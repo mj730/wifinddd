@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wi-Find | Public Wi-Fi Threat Detection System</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'neutral-dark': '#0F172A',   /* Slate Dark */
+                        'neutral-card': '#1E293B',   /* Charcoal Card */
+                        'neutral-border': '#334155', /* Subtle Border */
+                        'pink-accent': '#EC4899',   /* Hot Pink Accent */
+                        'pink-hover': '#DB2777',    /* Deep Pink Hover */
+                        'pink-glow': 'rgba(236, 72, 153, 0.25)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .pink-glow-box { box-shadow: 0 0 15px var(--tw-colors-pink-glow); }
+        .radar-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+        /* Modal / Overlay Styles - glassmorphism and dynamic accent */
+        .wf-modal-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(2,6,23,0.6); backdrop-filter: blur(6px); z-index: 60; }
+            .wf-modal { width: 520px; max-width: calc(100% - 32px); background: linear-gradient(180deg, rgba(17,24,39,0.85), rgba(15,23,42,0.9)); border-radius: 14px; padding: 18px; border: 1px solid rgba(255,255,255,0.03); box-shadow: 0 10px 30px rgba(2,6,23,0.6); transform: translateY(0); border-left: 4px solid var(--accent-color, #10b981); }
+        .wf-modal-header { display:flex; gap:12px; align-items: center; }
+        .wf-icon-wrap { width:44px; height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background: rgba(255,255,255,0.02); flex-shrink:0; }
+        .wf-modal-title { font-weight:700; color:var(--accent-color,#10b981); font-size:14px; letter-spacing:0.4px; }
+        .wf-modal-guidelines { margin-top:14px; color:#CBD5E1; font-size:13px; line-height:1.45; white-space:pre-line; }
+            .wf-guidance-list { margin-top:8px; display:block; padding-left:0; }
+            .wf-guidance-list li { display:flex; gap:10px; align-items:flex-start; list-style:none; padding:6px 0; }
+            .wf-guidance-icon { width:18px; height:18px; flex:0 0 18px; margin-top:2px; }
+            .wf-guidance-text { color:#E6EDF3; font-size:13px; }
+        .wf-modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+        .wf-btn { padding:8px 12px; border-radius:10px; font-weight:600; font-size:13px; }
+        .wf-btn-close { background:transparent; color:#94A3B8; border:1px solid rgba(255,255,255,0.03); }
+        .wf-btn-ack { background:var(--accent-color,#10b981); color:#06121A; border:1px solid rgba(0,0,0,0.12); }
+        .wf-modal.hidden{ display:none; }
+    </style>
+</head>
+<body class="bg-neutral-dark text-slate-100 min-h-screen font-sans flex flex-col">
+
+    <!-- Header / Navbar -->
+    <header class="bg-neutral-card border-b border-neutral-border px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-pink-accent flex items-center justify-center font-bold text-white shadow-lg pink-glow-box">
+                W
+            </div>
+            <h1 class="text-xl font-bold tracking-wide text-white">
+                Wi-Find <span class="text-xs uppercase px-2 py-0.5 rounded bg-pink-accent/20 text-pink-accent border border-pink-accent/30 ml-2">Scanner Active</span>
+            </h1>
+        </div>
+        <button id="scanBtn" onclick="runScanner()" class="bg-pink-accent hover:bg-pink-hover text-white px-5 py-2 rounded-xl font-semibold transition-all shadow-lg pink-glow-box flex items-center gap-2 text-sm">
+            <svg class="w-4 h-4 radar-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            Scan Nearby Wi-Fi
+        </button>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="flex-1 max-w-6xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Left Column: Detected Networks List -->
+        <section class="lg:col-span-2 bg-neutral-card border border-neutral-border rounded-2xl p-6 shadow-xl flex flex-col">
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h2 class="text-lg font-bold text-white">Public Networks in Range</h2>
+                    <p class="text-xs text-slate-400">Target Area: Commercial Mall Public Hotspots</p>
+                </div>
+                <span id="networkCount" class="text-xs bg-slate-800 text-slate-300 px-3 py-1 rounded-full border border-neutral-border">0 Networks Detected</span>
+            </div>
+
+            <!-- Network List Container -->
+            <div id="networkList" class="space-y-3 flex-1 overflow-y-auto pr-1">
+                <div class="text-center py-16 text-slate-500">
+                    <p class="text-sm">Click <span class="text-pink-accent font-semibold">"Scan Nearby Wi-Fi"</span> to analyze network telemetry.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Column: Threat Assessment Engine -->
+        <section class="bg-neutral-card border border-neutral-border rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+            <div>
+                <h2 class="text-lg font-bold text-white mb-1">Threat Assessment Engine</h2>
+                <p class="text-xs text-slate-400 mb-6">Evaluates encryption, BSSID, RSSI & protocols.</p>
+
+                <!-- Threat Card -->
+                <div id="threatCard" class="bg-slate-900 border border-neutral-border rounded-xl p-5 mb-6 text-center">
+                    <div id="statusBadge" class="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400 mb-3">
+                        Awaiting Telemetry
+                    </div>
+                    <h3 id="selectedSSID" class="text-xl font-bold text-white mb-1">No Network Selected</h3>
+                    <p id="riskScoreLabel" class="text-xs text-slate-400">Select or scan a network to calculate safety risk score.</p>
+                </div>
+
+                <!-- Guidance & Warnings -->
+                <div id="guidanceBox" class="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 text-xs text-slate-300 space-y-2">
+                    <span class="font-bold text-pink-accent block uppercase tracking-wider text-[10px]">Protective Guidance:</span>
+                    <p id="guidanceText">The threat detection engine validates public 802.11 broadcast parameters against security rules prior to connection.</p>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="mt-6 pt-4 border-t border-neutral-border flex gap-3">
+                <button id="connectBtn" disabled onclick="handleConnection()" class="flex-1 bg-slate-800 opacity-50 text-white py-2.5 rounded-xl text-xs font-bold transition-all">
+                    Acknowledge Risk
+                </button>
+                <button id="disconnectBtn" onclick="resetSelection()" class="px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-xl text-xs font-medium border border-neutral-border">
+                    Clear
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Risk Acknowledgement Modal -->
+    <div id="riskModal" class="wf-modal-overlay hidden" aria-hidden="true">
+        <div class="wf-modal" role="dialog" aria-modal="true" aria-labelledby="wfModalTitle">
+            <div class="wf-modal-header">
+                <div id="wfIcon" class="wf-icon-wrap">
+                    <!-- SVG injected dynamically -->
+                </div>
+                <div>
+                    <div id="wfModalTitle" class="wf-modal-title">STATUS: UNKNOWN</div>
+                    <div id="wfModalSub" class="text-xs text-slate-400 mt-1">Acknowledge the network risk and follow guidance below.</div>
+                </div>
+            </div>
+            <div id="wfModalGuidelines" class="wf-modal-guidelines">
+                    <ul id="wfGuidanceList" class="wf-guidance-list">
+                        <!-- guidance list items injected dynamically -->
+                    </ul>
+            </div>
+            <div class="wf-modal-actions">
+                    <button id="wfCloseBtn" class="wf-btn wf-btn-close">Cancel</button>
+                    <button id="wfAcknowledgeBtn" class="wf-btn wf-btn-ack">Acknowledge & Dismiss</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interactive Script -->
+    <script>
+        const mockNetworks = [
+            { ssid: 'SM_Free_WiFi_Public', bssid: 'A4:12:42:99:0B:01', encryption: 'OPEN', rssi: -48, risk: 'HIGH', reason: 'Unencrypted Open Network (Vulnerable to MitM/Sniffing)' },
+            { ssid: 'Mall_VIP_Lounge_WPA3', bssid: '2C:30:33:F1:8A:20', encryption: 'WPA3 Enterprise', rssi: -52, risk: 'LOW', reason: 'Strong Encryption Standard & Validated Handshake' },
+            { ssid: 'Free_Mall_WiFi_Fast', bssid: 'F4:8E:38:11:00:A2', encryption: 'WEP (Outdated)', rssi: -82, risk: 'HIGH', reason: 'High RSSI Anomaly / Rogue AP Signature Detected' },
+            { ssid: 'Tenant_CoffeeShop_Guest', bssid: '00:14:22:01:23:45', encryption: 'WPA2 Personal', rssi: -65, risk: 'MEDIUM', reason: 'Shared Key Authentication without Client Isolation' }
+        ];
+
+        let activeSelectedNetwork = null;
+
+        function runScanner() {
+            const listContainer = document.getElementById('networkList');
+            const countLabel = document.getElementById('networkCount');
+            listContainer.innerHTML = '';
+            
+            countLabel.innerText = `${mockNetworks.length} Networks Detected`;
+
+            mockNetworks.forEach((net) => {
+                let badgeColor = net.risk === 'HIGH' ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : 
+                                (net.risk === 'MEDIUM' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 
+                                'bg-emerald-500/10 text-emerald-400 border-emerald-500/30');
+
+                let item = document.createElement('div');
+                item.className = `p-4 rounded-xl border border-neutral-border bg-slate-900/60 hover:bg-slate-800/80 transition-all cursor-pointer flex justify-between items-center group`;
+                item.onclick = () => selectNetwork(net);
+
+                item.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="p-2.5 rounded-lg bg-neutral-card border border-neutral-border text-pink-accent group-hover:border-pink-accent/50 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-sm text-white group-hover:text-pink-accent transition-colors">${net.ssid}</h4>
+                            <p class="text-[11px] text-slate-400">BSSID: ${net.bssid} | ${net.encryption} | ${net.rssi} dBm</p>
+                        </div>
+                    </div>
+                    <span class="text-xs px-3 py-1 rounded-full border ${badgeColor} font-semibold">${net.risk} RISK</span>
+                `;
+                listContainer.appendChild(item);
+            });
+        }
+
+        function selectNetwork(net) {
+            activeSelectedNetwork = net;
+            document.getElementById('selectedSSID').innerText = net.ssid;
+            document.getElementById('riskScoreLabel').innerText = net.reason;
+            document.getElementById('guidanceText').innerText = net.risk === 'HIGH' ? 
+                'Avoid sensitive transactions (online banking/e-wallets). Consider disconnecting.' : 
+                (net.risk === 'MEDIUM' ? 'Proceed with caution. Encrypt traffic using secure HTTPS protocols.' : 'Network passed baseline encryption checks.');
+
+            const statusBadge = document.getElementById('statusBadge');
+            const connectBtn = document.getElementById('connectBtn');
+
+            if (net.risk === 'HIGH') {
+                statusBadge.className = 'inline-block px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30';
+                statusBadge.innerText = 'High Risk Flagged';
+            } else if (net.risk === 'MEDIUM') {
+                statusBadge.className = 'inline-block px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30';
+                statusBadge.innerText = 'Medium Risk Warning';
+            } else {
+                statusBadge.className = 'inline-block px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+                statusBadge.innerText = 'Network Safe';
+            }
+
+            connectBtn.disabled = false;
+            connectBtn.className = 'flex-1 bg-pink-accent hover:bg-pink-hover text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg pink-glow-box cursor-pointer';
+        }
+
+        function resetSelection() {
+            activeSelectedNetwork = null;
+            document.getElementById('selectedSSID').innerText = 'No Network Selected';
+            document.getElementById('riskScoreLabel').innerText = 'Select or scan a network to calculate safety risk score.';
+            document.getElementById('guidanceText').innerText = 'The threat detection engine validates public 802.11 broadcast parameters against security rules prior to connection.';
+            
+            const statusBadge = document.getElementById('statusBadge');
+            statusBadge.className = 'inline-block px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400';
+            statusBadge.innerText = 'Awaiting Telemetry';
+
+            const connectBtn = document.getElementById('connectBtn');
+            connectBtn.disabled = true;
+            connectBtn.className = 'flex-1 bg-slate-800 opacity-50 text-white py-2.5 rounded-xl text-xs font-bold transition-all';
+        }
+
+        function handleConnection() {
+            if (!activeSelectedNetwork) {
+                showSelectModal();
+                return;
+            }
+            showRiskModal(activeSelectedNetwork);
+        }
+
+        function showSelectModal() {
+            const modal = document.getElementById('riskModal');
+            const iconWrap = document.getElementById('wfIcon');
+            const title = document.getElementById('wfModalTitle');
+            const sub = document.getElementById('wfModalSub');
+            const listEl = document.getElementById('wfGuidanceList');
+
+            modal.classList.remove('hidden');
+            modal.style.setProperty('--accent-color', '#64748b');
+            iconWrap.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+            iconWrap.querySelectorAll('svg').forEach(s => s.style.color = '#94A3B8');
+            title.innerText = 'No Network Selected';
+            sub.innerText = '';
+            listEl.innerHTML = `
+                <li>
+                    <div class="wf-guidance-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 14v8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                    <div class="wf-guidance-text">Please select a network from the list first.</div>
+                </li>
+            `;
+        }
+
+        function showRiskModal(net) {
+            const modal = document.getElementById('riskModal');
+            const title = document.getElementById('wfModalTitle');
+            const sub = document.getElementById('wfModalSub');
+            const guidelines = document.getElementById('wfModalGuidelines');
+            const iconWrap = document.getElementById('wfIcon');
+
+            let accent = '#10b981';
+            let headerText = '';
+            let guideText = '';
+            let iconSVG = '';
+
+            if (net.risk === 'LOW') {
+                accent = '#10b981';
+                iconSVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 12.5l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+                // show detected/safe state before user acknowledges
+                headerText = 'STATUS: NETWORK SAFE';
+                guideText = 'GUIDELINES:\n\nSafe for general browsing. Maintain standard cybersecurity best practices.';
+            } else if (net.risk === 'MEDIUM') {
+                accent = '#f59e0b';
+                iconSVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 9v4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 17h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+                headerText = 'STATUS: MEDIUM RISK DETECTED';
+                guideText = 'GUIDELINES:\n\nEnsure websites use HTTPS (look for the lock icon). Avoid transmitting sensitive confidential data.';
+            } else if (net.risk === 'HIGH') {
+                accent = '#ef4444';
+                iconSVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 1.5L2 6.75v5.5c0 5.25 3.75 9.75 10 10 6.25-.25 10-4.75 10-10v-5.5L12 1.5z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 10.5v2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 15.5h.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+                headerText = 'STATUS: HIGH RISK DETECTED';
+                guideText = 'GUIDELINES:\n\nDo not access online banking, e-wallets, or enter passwords. Avoid entering personal information.';
+            } else {
+                accent = '#64748b';
+                iconSVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.2"/></svg>`;
+                headerText = 'STATUS: UNKNOWN';
+                guideText = 'GUIDELINES:\n\nNetwork risk level unknown. Proceed with caution.';
+            }
+
+            // Store current risk on modal for acknowledge handler
+            modal.dataset.currentRisk = net.risk || '';
+
+            // Build guidance list depending on risk
+            const listEl = document.getElementById('wfGuidanceList');
+            let listHTML = '';
+            if (net.risk === 'HIGH') {
+                listHTML = `
+                    <li><div class="wf-guidance-icon" style="color:#ef4444"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 1.5L2 6.75v5.5c0 5.25 3.75 9.75 10 10 6.25-.25 10-4.75 10-10v-5.5L12 1.5z" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="wf-guidance-text">Do NOT open banking apps, e-wallets, or online shopping.</div></li>
+                    <li><div class="wf-guidance-icon" style="color:#ef4444"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 18L18 6M6 6l12 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="wf-guidance-text">Do NOT enter passwords or personal details.</div></li>
+                    <li><div class="wf-guidance-icon" style="color:#10b981"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 12.5l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="wf-guidance-text">Best choice: Turn off Wi-Fi and use Mobile Data instead.</div></li>
+                `;
+            } else if (net.risk === 'MEDIUM') {
+                listHTML = `
+                    <li><div class="wf-guidance-icon" style="color:#f59e0b"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="wf-guidance-text"><span style="display:inline-flex;align-items:center;gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="color:#f59e0b"><path d="M12 17a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10V8a6 6 0 1112 0v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Always check for the lock icon in your browser's address bar before typing on a website.</span></div></li>
+                    <li><div class="wf-guidance-icon" style="color:#ef4444"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 18L18 6M6 6l12 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="wf-guidance-text">Avoid making online payments or opening confidential files.</div></li>
+                    <li><div class="wf-guidance-icon" style="color:#f59e0b"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 12h18M12 3v18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="wf-guidance-text">Turn off file sharing on your device while using this network.</div></li>
+                `;
+            } else if (net.risk === 'LOW') {
+                listHTML = `
+                    <li><div class="wf-guidance-icon" style="color:#10b981"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 12.5l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="wf-guidance-text">Network passed baseline security checks. Safe for regular web browsing and daily use.</div></li>
+                    <li><div class="wf-guidance-icon" style="color:#10b981"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 14v8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="wf-guidance-text">Keep your device operating system and browser updated.</div></li>
+                `;
+            } else {
+                listHTML = `<li><div class="wf-guidance-icon"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.2"/></svg></div><div class="wf-guidance-text">Network risk level unknown. Proceed with caution.</div></li>`;
+            }
+
+            // Store current risk on modal for acknowledge handler
+            modal.dataset.currentRisk = net.risk || '';
+
+            // Apply accent color and content
+            modal.classList.remove('hidden');
+            modal.style.setProperty('--accent-color', accent);
+            iconWrap.innerHTML = iconSVG;
+            // set icon color and modal title color via accent
+            iconWrap.querySelectorAll('svg').forEach(s => s.style.color = accent);
+            title.innerText = headerText;
+            sub.innerText = net.ssid ? net.ssid : '';
+            listEl.innerHTML = listHTML;
+            // Update acknowledge button color
+            document.getElementById('wfAcknowledgeBtn').style.background = accent;
+        }
+
+        // Modal close / acknowledge wiring
+        (function(){
+            const modal = document.getElementById('riskModal');
+            const closeBtn = document.getElementById('wfCloseBtn');
+            const ackBtn = document.getElementById('wfAcknowledgeBtn');
+            const titleEl = document.getElementById('wfModalTitle');
+
+            closeBtn.addEventListener('click', function(){
+                modal.classList.add('hidden');
+            });
+
+            ackBtn.addEventListener('click', function(){
+                const currentRisk = modal.dataset.currentRisk;
+                let ackTitle = '';
+                if (currentRisk === 'LOW') {
+                    ackTitle = 'STATUS: NETWORK SAFE - ACKNOWLEDGED';
+                } else if (currentRisk === 'MEDIUM') {
+                    ackTitle = 'STATUS: MEDIUM RISK ACKNOWLEDGED';
+                } else if (currentRisk === 'HIGH') {
+                    ackTitle = 'STATUS: HIGH RISK ACKNOWLEDGED';
+                } else {
+                    ackTitle = 'STATUS: ACKNOWLEDGED';
+                }
+
+                // Update title to show acknowledged state, then close modal
+                titleEl.innerText = ackTitle;
+                if (activeSelectedNetwork) console.log(`Risk acknowledged for ${activeSelectedNetwork.ssid} [${activeSelectedNetwork.risk}]`);
+                modal.classList.add('hidden');
+            });
+
+            // clicking outside modal content closes it
+            modal.addEventListener('click', function(e){
+                if (e.target === modal) modal.classList.add('hidden');
+            });
+        })();
+
+        // Ensure Connect/Acknowledge Risk button reliably triggers modal
+        document.getElementById('connectBtn').addEventListener('click', function(e){
+            // If the button is disabled, do nothing (this keeps legacy behavior)
+            if (this.disabled) return;
+            handleConnection();
+        });
+    </script>
+</body>
+</html>
