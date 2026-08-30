@@ -42,12 +42,14 @@
         .wf-btn-close { background:transparent; color:#94A3B8; border:1px solid rgba(255,255,255,0.03); }
         .wf-btn-ack { background:var(--accent-color,#10b981); color:#06121A; border:1px solid rgba(0,0,0,0.12); }
         .wf-modal.hidden{ display:none; }
+        /* When overlay is hidden it should not capture pointer events */
+        .wf-modal-overlay.hidden { display:none; pointer-events:none; }
     </style>
 </head>
 <body class="bg-neutral-dark text-slate-100 min-h-screen font-sans flex flex-col">
 
     <!-- Header / Navbar -->
-    <header class="bg-neutral-card border-b border-neutral-border px-6 py-4 flex justify-between items-center">
+    <header class="relative z-20 bg-neutral-card border-b border-neutral-border px-6 py-4 flex justify-between items-center">
         <div class="flex items-center gap-3">
             <div class="w-8 h-8 rounded-lg bg-pink-accent flex items-center justify-center font-bold text-white shadow-lg pink-glow-box">
                 W
@@ -60,10 +62,14 @@
             <svg class="w-4 h-4 radar-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             Scan Nearby Wi-Fi
         </button>
+        <button id="powerBtn" class="ml-3 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-semibold transition-all shadow flex items-center gap-2 text-sm" title="End Session">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2v10"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12a7 7 0 0014 0"/></svg>
+            End Session
+        </button>
     </header>
 
     <!-- Main Content Grid -->
-    <main class="flex-1 max-w-6xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <main class="relative z-10 flex-1 max-w-6xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         <!-- Left Column: Detected Networks List -->
         <section class="lg:col-span-2 bg-neutral-card border border-neutral-border rounded-2xl p-6 shadow-xl flex flex-col">
@@ -136,7 +142,105 @@
             </div>
             <div class="wf-modal-actions">
                     <button id="wfCloseBtn" class="wf-btn wf-btn-close">Cancel</button>
-                    <button id="wfAcknowledgeBtn" class="wf-btn wf-btn-ack">Acknowledge & Dismiss</button>
+                    <button id="wfAcknowledgeBtn" class="wf-btn wf-btn-ack">Acknowledge</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Session Monitor Modal -->
+    <div id="monitorModal" class="wf-modal-overlay hidden" aria-hidden="true">
+        <div class="wf-modal" role="dialog" aria-modal="true" aria-labelledby="monitorTitle">
+            <div class="wf-modal-header">
+                <div id="monitorIcon" class="wf-icon-wrap"></div>
+                <div>
+                    <div id="monitorTitle" class="wf-modal-title">Active Session</div>
+                    <div id="monitorStatus" class="text-xs text-slate-400 mt-1">Live Connected</div>
+                </div>
+            </div>
+            <div class="wf-modal-guidelines" style="margin-top:12px;">
+                <div class="text-sm text-slate-300 font-semibold mb-2">Connection</div>
+                <div class="text-xs text-slate-200 mb-3"><span id="monitorNetwork">-</span> • <span id="monitorRisk">-</span></div>
+
+                <div class="text-sm text-slate-300 font-semibold">Live Timer</div>
+                <div id="monitorTimer" class="text-lg font-mono text-white my-2">00:00</div>
+
+                <div class="text-sm text-slate-300 font-semibold">Monitoring Log</div>
+                <div id="monitorLog" style="max-height:160px; overflow:auto; padding:8px; border-radius:8px; background:rgba(255,255,255,0.02); margin-top:8px; font-size:13px; color:#CBD5E1;"></div>
+            </div>
+            <div class="wf-modal-actions">
+                <button id="monitorCloseBtn" class="wf-btn wf-btn-close">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shutdown Overlay -->
+    <div id="shutdownOverlay" class="fixed inset-0 hidden flex items-center justify-center z-70" style="background:rgba(2,6,23,0.8);backdrop-filter:blur(6px); pointer-events:none;">
+        <div id="shutdownCard" class="bg-neutral-900/80 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl text-slate-100 p-8 text-center opacity-0" style="transition:opacity .6s ease;">
+            <div class="text-xl font-semibold mb-2">Wi-Find Security Engine: Session Terminated.</div>
+            <div class="text-sm text-slate-400">Goodbye.</div>
+        </div>
+    </div>
+
+    <!-- Power Off Overlay (Enterprise UI - Polished) -->
+    <div id="powerOffOverlay" class="fixed inset-0 hidden z-[9999] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-6" style="pointer-events:none;">
+        <div class="w-full max-w-3xl mx-auto">
+            <div class="backdrop-blur-md bg-slate-900/80 rounded-2xl border border-white/10 shadow-2xl text-slate-100 overflow-hidden">
+                <!-- Top status bar -->
+                <div class="flex items-center justify-between px-6 py-3 border-b border-white/6">
+                    <div class="flex items-center gap-3">
+                        <span class="relative flex h-3 w-3">
+                            <span class="absolute inline-flex h-full w-full rounded-full bg-rose-500/40 animate-ping"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-rose-600" style="box-shadow:0 0 10px rgba(239,68,68,0.14);"></span>
+                        </span>
+                        <span class="text-xs font-semibold tracking-wider text-slate-200">SESSION TERMINATED</span>
+                    </div>
+                    <div class="text-xs text-slate-400 font-mono" id="powerMeta">[ SESSION ID: #8802-OFFLINE | 00:00:00 ]</div>
+                </div>
+
+                <div class="px-8 py-8 grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+                    <div class="md:col-span-2">
+                        <div class="flex items-center gap-4">
+                            <div class="relative p-3 rounded-lg bg-slate-800/40 border border-white/6 ring-1 ring-rose-500/10">
+                                <!-- Power SVG icon inside a soft ring -->
+                                <div class="flex items-center justify-center w-12 h-12 rounded-md bg-slate-800/50">
+                                    <svg class="w-7 h-7 text-slate-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 2v10"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M5 12a7 7 0 0014 0"/></svg>
+                                </div>
+                            </div>
+                            <div>
+                                <h2 class="text-2xl font-semibold text-white">Wi-Find Security Engine Deactivated</h2>
+                                <p class="text-slate-300 mt-2">Active threat monitoring unmounted. Network sockets safely closed.</p>
+                            </div>
+                        </div>
+                        <div class="mt-6 text-sm font-mono text-slate-500">&gt; Telemetry: <span id="powerTelemetry">Shutdown sequence completed without faults.</span></div>
+                    </div>
+
+                    <div class="flex flex-col items-stretch gap-3 md:items-end">
+                        <button id="reconnectBtn" class="px-6 py-3 bg-gradient-to-r from-emerald-400 to-cyan-400 text-black font-semibold rounded-lg shadow-lg transform transition-transform duration-200 hover:scale-105" style="box-shadow:0 12px 30px rgba(16,185,129,0.12);">
+                            Reconnect Engine
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Summary Modal -->
+    <div id="logSummaryModal" class="wf-modal-overlay hidden" aria-hidden="true">
+        <div class="wf-modal" role="dialog" aria-modal="true" aria-labelledby="logSummaryTitle">
+            <div class="wf-modal-header">
+                <div class="wf-icon-wrap">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M3 7h18M3 12h18M3 17h18"/></svg>
+                </div>
+                <div>
+                    <div id="logSummaryTitle" class="wf-modal-title">Log Summary</div>
+                    <div class="text-xs text-slate-400 mt-1">Recent monitoring events</div>
+                </div>
+            </div>
+            <div class="wf-modal-guidelines" style="max-height:320px; overflow:auto; margin-top:12px;">
+                <div id="logSummaryContent" class="text-sm text-slate-200 font-mono"></div>
+            </div>
+            <div class="wf-modal-actions">
+                <button id="logCloseBtn" class="wf-btn wf-btn-close">Close</button>
             </div>
         </div>
     </div>
@@ -151,8 +255,10 @@
         ];
 
         let activeSelectedNetwork = null;
+        let systemPoweredOff = false;
 
         function runScanner() {
+            if (systemPoweredOff) return;
             const listContainer = document.getElementById('networkList');
             const countLabel = document.getElementById('networkCount');
             listContainer.innerHTML = '';
@@ -185,6 +291,7 @@
         }
 
         function selectNetwork(net) {
+            if (systemPoweredOff) return;
             activeSelectedNetwork = net;
             document.getElementById('selectedSSID').innerText = net.ssid;
             document.getElementById('riskScoreLabel').innerText = net.reason;
@@ -195,9 +302,10 @@
             const statusBadge = document.getElementById('statusBadge');
             const connectBtn = document.getElementById('connectBtn');
 
+            // Update UI badges based on risk level
             if (net.risk === 'HIGH') {
-                statusBadge.className = 'inline-block px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30';
-                statusBadge.innerText = 'High Risk Flagged';
+                statusBadge.className = 'inline-block px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30';
+                statusBadge.innerText = 'High Risk Warning';
             } else if (net.risk === 'MEDIUM') {
                 statusBadge.className = 'inline-block px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30';
                 statusBadge.innerText = 'Medium Risk Warning';
@@ -226,6 +334,7 @@
         }
 
         function handleConnection() {
+            if (systemPoweredOff) return;
             if (!activeSelectedNetwork) {
                 showSelectModal();
                 return;
@@ -234,6 +343,7 @@
         }
 
         function showSelectModal() {
+            if (systemPoweredOff) return;
             const modal = document.getElementById('riskModal');
             const iconWrap = document.getElementById('wfIcon');
             const title = document.getElementById('wfModalTitle');
@@ -255,6 +365,7 @@
         }
 
         function showRiskModal(net) {
+            if (systemPoweredOff) return;
             const modal = document.getElementById('riskModal');
             const title = document.getElementById('wfModalTitle');
             const sub = document.getElementById('wfModalSub');
@@ -345,21 +456,18 @@
 
             ackBtn.addEventListener('click', function(){
                 const currentRisk = modal.dataset.currentRisk;
+                // Update the modal title to acknowledged state
                 let ackTitle = '';
-                if (currentRisk === 'LOW') {
-                    ackTitle = 'STATUS: NETWORK SAFE - ACKNOWLEDGED';
-                } else if (currentRisk === 'MEDIUM') {
-                    ackTitle = 'STATUS: MEDIUM RISK ACKNOWLEDGED';
-                } else if (currentRisk === 'HIGH') {
-                    ackTitle = 'STATUS: HIGH RISK ACKNOWLEDGED';
-                } else {
-                    ackTitle = 'STATUS: ACKNOWLEDGED';
-                }
+                if (currentRisk === 'LOW') ackTitle = 'STATUS: NETWORK SAFE - ACKNOWLEDGED';
+                else if (currentRisk === 'MEDIUM') ackTitle = 'STATUS: MEDIUM RISK ACKNOWLEDGED';
+                else if (currentRisk === 'HIGH') ackTitle = 'STATUS: HIGH RISK ACKNOWLEDGED';
+                else ackTitle = 'STATUS: ACKNOWLEDGED';
 
-                // Update title to show acknowledged state, then close modal
                 titleEl.innerText = ackTitle;
                 if (activeSelectedNetwork) console.log(`Risk acknowledged for ${activeSelectedNetwork.ssid} [${activeSelectedNetwork.risk}]`);
+                // close risk modal then open active session monitor
                 modal.classList.add('hidden');
+                if (activeSelectedNetwork) startSession(activeSelectedNetwork);
             });
 
             // clicking outside modal content closes it
@@ -374,6 +482,165 @@
             if (this.disabled) return;
             handleConnection();
         });
+
+            // Session state
+            let sessionInterval = null;
+            let sessionLogInterval = null;
+            let sessionStart = null;
+
+            function startSession(net) {
+                if (systemPoweredOff) return;
+                // open monitor modal and start timer/log
+                const monitorModal = document.getElementById('monitorModal');
+                const monitorIcon = document.getElementById('monitorIcon');
+                document.getElementById('monitorNetwork').innerText = net.ssid;
+                document.getElementById('monitorRisk').innerText = net.risk + ' RISK';
+                // set icon and accent
+                let accent = (net.risk === 'HIGH') ? '#ef4444' : (net.risk === 'MEDIUM' ? '#f59e0b' : '#10b981');
+                let iconSVG = '';
+                if (net.risk === 'HIGH') iconSVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 1.5L2 6.75v5.5c0 5.25 3.75 9.75 10 10 6.25-.25 10-4.75 10-10v-5.5L12 1.5z" stroke="currentColor" stroke-width="1.25"/></svg>`;
+                else if (net.risk === 'MEDIUM') iconSVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="1.2"/></svg>`;
+                else iconSVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M9 12.5l2 2 4-4" stroke="currentColor" stroke-width="1.8"/></svg>`;
+
+                monitorIcon.innerHTML = iconSVG;
+                monitorIcon.querySelectorAll('svg').forEach(s => s.style.color = accent);
+                monitorModal.style.setProperty('--accent-color', accent);
+                monitorModal.classList.remove('hidden');
+
+                // start timer
+                if (sessionInterval) clearInterval(sessionInterval);
+                if (sessionLogInterval) clearInterval(sessionLogInterval);
+                sessionStart = Date.now();
+                updateMonitorTimer();
+                sessionInterval = setInterval(updateMonitorTimer, 1000);
+
+                // add initial log entry and periodic log updates based on risk
+                const monitorLog = document.getElementById('monitorLog');
+                monitorLog.innerHTML = '';
+                appendMonitorLog(`Session started for ${net.ssid} [${net.risk}]`);
+                sessionLogInterval = setInterval(function(){
+                    if (net.risk === 'HIGH') appendMonitorLog('Packet inspection alert active. Encrypting local outbound traffic...');
+                    else if (net.risk === 'MEDIUM') appendMonitorLog('Monitoring connection quality and HTTPS usage.');
+                    else appendMonitorLog('Monitoring: baseline telemetry nominal.');
+                }, 5000);
+            }
+
+            function updateMonitorTimer(){
+                if (!sessionStart) return;
+                const elapsed = Math.floor((Date.now() - sessionStart)/1000);
+                const mm = String(Math.floor(elapsed/60)).padStart(2,'0');
+                const ss = String(elapsed%60).padStart(2,'0');
+                document.getElementById('monitorTimer').innerText = `${mm}:${ss}`;
+            }
+
+            function appendMonitorLog(msg){
+                const el = document.getElementById('monitorLog');
+                const time = new Date().toLocaleTimeString();
+                const item = document.createElement('div');
+                item.style.padding = '6px 0';
+                item.style.borderBottom = '1px dashed rgba(255,255,255,0.03)';
+                item.innerText = `[${time}] ${msg}`;
+                el.prepend(item);
+            }
+
+            // monitor modal controls
+            document.getElementById('monitorCloseBtn').addEventListener('click', function(){
+                document.getElementById('monitorModal').classList.add('hidden');
+            });
+
+            // monitorEndBtn removed; End Session handled from header power button (powerOffSystem)
+
+            function endSession(){
+                // stop intervals
+                if (sessionInterval) { clearInterval(sessionInterval); sessionInterval = null; }
+                if (sessionLogInterval) { clearInterval(sessionLogInterval); sessionLogInterval = null; }
+                sessionStart = null;
+                // clear active selection
+                activeSelectedNetwork = null;
+                // hide monitor modal
+                document.getElementById('monitorModal').classList.add('hidden');
+                // show shutdown overlay with fade
+                const overlay = document.getElementById('shutdownOverlay');
+                const card = document.getElementById('shutdownCard');
+                overlay.classList.remove('hidden');
+                overlay.classList.remove('pointer-events-none');
+                setTimeout(()=>{ card.style.opacity = '1'; }, 20);
+                setTimeout(()=>{
+                    // fade out
+                    card.style.opacity = '0';
+                    setTimeout(()=>{ overlay.classList.add('hidden'); overlay.classList.add('pointer-events-none'); resetSelection(); }, 600);
+                }, 1800);
+            }
+
+            // Power off entire system (persistent until page refresh)
+            document.getElementById('powerBtn').addEventListener('click', powerOffSystem);
+
+            function powerOffSystem(){
+                if (systemPoweredOff) return;
+                systemPoweredOff = true;
+                // stop any running session intervals
+                if (sessionInterval) { clearInterval(sessionInterval); sessionInterval = null; }
+                if (sessionLogInterval) { clearInterval(sessionLogInterval); sessionLogInterval = null; }
+                sessionStart = null;
+                // hide any open modals
+                document.getElementById('riskModal').classList.add('hidden');
+                document.getElementById('monitorModal').classList.add('hidden');
+                // visually disable main controls
+                const scanBtn = document.getElementById('scanBtn');
+                const connectBtn = document.getElementById('connectBtn');
+                scanBtn.disabled = true; scanBtn.classList.add('opacity-40','cursor-not-allowed');
+                connectBtn.disabled = true; connectBtn.classList.add('opacity-40','cursor-not-allowed');
+
+                // show persistent power-off overlay
+                const pOverlay = document.getElementById('powerOffOverlay');
+                // populate metadata and telemetry
+                const metaEl = document.getElementById('powerMeta');
+                const telemetryEl = document.getElementById('powerTelemetry');
+                const id = '#'+Math.floor(Math.random()*9000+1000)+'-OFFLINE';
+                const time = new Date().toLocaleTimeString();
+                if (metaEl) metaEl.innerText = `[ SESSION ID: ${id} | ${time} ]`;
+                if (telemetryEl) telemetryEl.innerText = 'Shutdown sequence completed without faults.';
+
+                pOverlay.classList.remove('hidden');
+                pOverlay.style.pointerEvents = 'auto';
+                pOverlay.style.opacity = '1';
+
+                // wire power overlay buttons
+                const reconnectBtn = document.getElementById('reconnectBtn');
+                if (reconnectBtn) reconnectBtn.addEventListener('click', reconnectEngine);
+            }
+
+            function reconnectEngine(){
+                // reverse shutdown state
+                systemPoweredOff = false;
+                // hide overlay
+                const pOverlay = document.getElementById('powerOffOverlay');
+                if (pOverlay) { pOverlay.classList.add('hidden'); pOverlay.style.pointerEvents = 'none'; }
+                // re-enable UI
+                const scanBtn = document.getElementById('scanBtn');
+                const connectBtn = document.getElementById('connectBtn');
+                if (scanBtn) { scanBtn.disabled = false; scanBtn.classList.remove('opacity-40','cursor-not-allowed'); }
+                if (connectBtn) { connectBtn.disabled = true; connectBtn.classList.remove('opacity-40','cursor-not-allowed'); }
+                // inform user in monitoring log
+                appendMonitorLog('System reconnected by user. Monitoring engine idle.');
+            }
+
+            function showLogSummary(){
+                // copy recent monitorLog entries into log summary modal
+                const logEl = document.getElementById('monitorLog');
+                const content = document.getElementById('logSummaryContent');
+                const modal = document.getElementById('logSummaryModal');
+                if (!content || !modal) return;
+                // gather up to 12 lines
+                const entries = Array.from(logEl ? logEl.children : []).slice(0,12).map(n => n.innerText).join('\n');
+                content.innerText = entries || 'No monitoring events available.';
+                modal.classList.remove('hidden');
+                modal.style.setProperty('--accent-color', '#64748b');
+                modal.style.pointerEvents = 'auto';
+                // close wiring
+                const logClose = document.getElementById('logCloseBtn');
+                if (logClose) logClose.addEventListener('click', ()=>{ modal.classList.add('hidden'); });
+            }
     </script>
 </body>
 </html>
