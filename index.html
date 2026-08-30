@@ -40,7 +40,14 @@
         .wf-modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
         .wf-btn { padding:8px 12px; border-radius:10px; font-weight:600; font-size:13px; }
         .wf-btn-close { background:transparent; color:#94A3B8; border:1px solid rgba(255,255,255,0.03); }
-        .wf-btn-ack { background:var(--accent-color,#10b981); color:#06121A; border:1px solid rgba(0,0,0,0.12); }
+        .wf-btn-ack {
+            background: linear-gradient(135deg, rgba(16,185,129,0.95) 0%, rgba(34,211,238,0.95) 45%, rgba(56,189,248,0.95) 100%);
+            color:#03131A;
+            border:1px solid rgba(110,231,183,0.7);
+            box-shadow: 0 0 0 1px rgba(16,185,129,0.25), 0 0 18px rgba(45,212,191,0.32);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .wf-btn-ack:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(16,185,129,0.3), 0 0 22px rgba(45,212,191,0.42); }
         .wf-modal.hidden{ display:none; }
         /* When overlay is hidden it should not capture pointer events */
         .wf-modal-overlay.hidden { display:none; pointer-events:none; }
@@ -112,10 +119,13 @@
             </div>
 
             <!-- Action Buttons -->
-            <div class="mt-6 pt-4 border-t border-neutral-border flex gap-3">
+            <div class="mt-6 pt-4 border-t border-neutral-border flex gap-3 items-center">
                 <button id="connectBtn" disabled onclick="handleConnection()" class="flex-1 bg-slate-800 opacity-50 text-white py-2.5 rounded-xl text-xs font-bold transition-all">
                     Acknowledge Risk
                 </button>
+                <div id="networkStatusInline" class="hidden items-center px-2.5 py-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 text-[10px] font-semibold uppercase tracking-[0.12em] whitespace-nowrap">
+                    Network Safe
+                </div>
                 <button id="disconnectBtn" onclick="resetSelection()" class="px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-xl text-xs font-medium border border-neutral-border">
                     Clear
                 </button>
@@ -142,7 +152,7 @@
             </div>
             <div class="wf-modal-actions">
                     <button id="wfCloseBtn" class="wf-btn wf-btn-close">Cancel</button>
-                    <button id="wfAcknowledgeBtn" class="wf-btn wf-btn-ack">Acknowledge</button>
+                    <button id="wfAcknowledgeBtn" class="wf-btn wf-btn-ack">Log Connection Event &amp; Monitor Session</button>
             </div>
         </div>
     </div>
@@ -301,12 +311,14 @@
 
             const statusBadge = document.getElementById('statusBadge');
             const connectBtn = document.getElementById('connectBtn');
+            const networkStatusInline = document.getElementById('networkStatusInline');
+            const isLowRisk = net.risk === 'LOW' || net.risk === 'LOW RISK';
 
             // Update UI badges based on risk level
-            if (net.risk === 'HIGH') {
+            if (net.risk === 'HIGH' || net.risk === 'HIGH RISK') {
                 statusBadge.className = 'inline-block px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30';
                 statusBadge.innerText = 'High Risk Warning';
-            } else if (net.risk === 'MEDIUM') {
+            } else if (net.risk === 'MEDIUM' || net.risk === 'MEDIUM RISK') {
                 statusBadge.className = 'inline-block px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30';
                 statusBadge.innerText = 'Medium Risk Warning';
             } else {
@@ -314,8 +326,19 @@
                 statusBadge.innerText = 'Network Safe';
             }
 
-            connectBtn.disabled = false;
-            connectBtn.className = 'flex-1 bg-pink-accent hover:bg-pink-hover text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg pink-glow-box cursor-pointer';
+            // Single primary status/action rendering in the bottom bar
+            if (isLowRisk) {
+                connectBtn.classList.add('hidden');
+                connectBtn.disabled = true;
+                networkStatusInline.classList.remove('hidden');
+                networkStatusInline.classList.add('flex');
+            } else {
+                connectBtn.classList.remove('hidden');
+                connectBtn.disabled = false;
+                connectBtn.className = 'flex-1 bg-pink-accent hover:bg-pink-hover text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg pink-glow-box cursor-pointer';
+                networkStatusInline.classList.add('hidden');
+                networkStatusInline.classList.remove('flex');
+            }
         }
 
         function resetSelection() {
@@ -328,9 +351,36 @@
             statusBadge.className = 'inline-block px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400';
             statusBadge.innerText = 'Awaiting Telemetry';
 
+            const networkStatusInline = document.getElementById('networkStatusInline');
+            networkStatusInline.classList.add('hidden');
+            networkStatusInline.classList.remove('flex');
+
             const connectBtn = document.getElementById('connectBtn');
             connectBtn.disabled = true;
+            connectBtn.classList.add('hidden');
             connectBtn.className = 'flex-1 bg-slate-800 opacity-50 text-white py-2.5 rounded-xl text-xs font-bold transition-all';
+        }
+
+        function logConnectionEvent(net) {
+            if (!net) return;
+            const timestamp = new Date().toISOString();
+            const message = `[${new Date().toLocaleTimeString()}] Connection event logged for ${net.ssid} (${net.risk} risk)`;
+            console.log(message, { timestamp, ssid: net.ssid, risk: net.risk });
+
+            const monitorLog = document.getElementById('monitorLog');
+            if (monitorLog) {
+                const entry = document.createElement('div');
+                entry.style.padding = '6px 0';
+                entry.style.borderBottom = '1px dashed rgba(255,255,255,0.03)';
+                entry.innerText = message;
+                monitorLog.prepend(entry);
+            }
+        }
+
+        function connectToSelectedNetwork() {
+            if (systemPoweredOff || !activeSelectedNetwork) return;
+            logConnectionEvent(activeSelectedNetwork);
+            startSession(activeSelectedNetwork);
         }
 
         function handleConnection() {
@@ -339,6 +389,12 @@
                 showSelectModal();
                 return;
             }
+
+            if (activeSelectedNetwork.risk === 'LOW') {
+                connectToSelectedNetwork();
+                return;
+            }
+
             showRiskModal(activeSelectedNetwork);
         }
 
@@ -452,11 +508,29 @@
 
             closeBtn.addEventListener('click', function(){
                 modal.classList.add('hidden');
+                if (activeSelectedNetwork && !systemPoweredOff) {
+                    document.getElementById('selectedSSID').innerText = activeSelectedNetwork.ssid;
+                }
             });
+
+            function logConnectionEvent(net) {
+                if (!net) return;
+                const timestamp = new Date().toISOString();
+                const logEntry = `[${new Date().toLocaleTimeString()}] Connection event logged for ${net.ssid} (${net.risk} risk)`;
+                console.log(logEntry, { timestamp, ssid: net.ssid, risk: net.risk });
+
+                const monitorLog = document.getElementById('monitorLog');
+                if (monitorLog) {
+                    const entry = document.createElement('div');
+                    entry.style.padding = '6px 0';
+                    entry.style.borderBottom = '1px dashed rgba(255,255,255,0.03)';
+                    entry.innerText = logEntry;
+                    monitorLog.prepend(entry);
+                }
+            }
 
             ackBtn.addEventListener('click', function(){
                 const currentRisk = modal.dataset.currentRisk;
-                // Update the modal title to acknowledged state
                 let ackTitle = '';
                 if (currentRisk === 'LOW') ackTitle = 'STATUS: NETWORK SAFE - ACKNOWLEDGED';
                 else if (currentRisk === 'MEDIUM') ackTitle = 'STATUS: MEDIUM RISK ACKNOWLEDGED';
@@ -464,10 +538,8 @@
                 else ackTitle = 'STATUS: ACKNOWLEDGED';
 
                 titleEl.innerText = ackTitle;
-                if (activeSelectedNetwork) console.log(`Risk acknowledged for ${activeSelectedNetwork.ssid} [${activeSelectedNetwork.risk}]`);
-                // close risk modal then open active session monitor
                 modal.classList.add('hidden');
-                if (activeSelectedNetwork) startSession(activeSelectedNetwork);
+                connectToSelectedNetwork();
             });
 
             // clicking outside modal content closes it
